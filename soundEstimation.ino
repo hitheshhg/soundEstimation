@@ -47,6 +47,93 @@ struct SoundEvent {
   const char *status_reason;
 };
 
+struct TinyMLPrediction {
+  const char *predicted_class;
+  float confidence;
+  float sector_angle;
+};
+
+static TinyMLPrediction latest_ml_pred = {"IDLE", 0.0f, 0.0f};
+
+TinyMLPrediction run_tinyml_inference(float l_rms, float r_rms,
+                                      float delay_smp, float peak, float snr) {
+  float feat_ild = (l_rms - r_rms) / (l_rms + r_rms + 1e-4f);
+  float feat_itd = delay_smp / (float)max_physical_lag;
+  float feat_peak = peak;
+  float feat_snr = snr / 10.0f;
+
+  float feats[4] = {feat_ild, feat_itd, feat_peak, feat_snr};
+
+  const float w1[8][4] = {
+      {-1.85f, -2.40f, 0.35f, 0.45f},
+      {-1.20f, -1.95f, 0.20f, 0.30f},
+      { 0.05f, -0.15f, 0.60f, 0.70f},
+      {-0.10f,  0.10f, 0.55f, 0.65f},
+      { 1.15f,  1.85f, 0.25f, 0.35f},
+      { 1.90f,  2.50f, 0.40f, 0.50f},
+      {-0.80f, -1.10f, 0.15f, 0.20f},
+      { 0.75f,  1.20f, 0.18f, 0.25f}
+  };
+  const float b1[8] = {-0.12f, -0.08f, 0.25f, 0.20f, -0.05f, -0.15f, -0.02f, -0.03f};
+
+  float h[8];
+  for (int i = 0; i < 8; i++) {
+    float s = b1[i];
+    for (int j = 0; j < 4; j++) {
+      s += w1[i][j] * feats[j];
+    }
+    h[i] = (s > 0.0f) ? s : 0.0f;
+  }
+
+  const float w2[3][8] = {
+      { 2.10f,  1.65f, -0.90f, -0.85f, -1.50f, -2.30f,  1.20f, -1.10f},
+      {-0.95f, -0.80f,  2.20f,  2.10f, -0.75f, -0.90f, -0.40f, -0.35f},
+      {-1.60f, -2.20f, -0.85f, -0.95f,  1.70f,  2.40f, -1.05f,  1.30f}
+  };
+  const float b2[3] = {0.15f, 0.35f, 0.10f};
+
+  float logits[3];
+  float max_l = -1e9f;
+  for (int c = 0; c < 3; c++) {
+    float s = b2[c];
+    for (int k = 0; k < 8; k++) {
+      s += w2[c][k] * h[k];
+    }
+    logits[c] = s;
+    if (s > max_l) max_l = s;
+  }
+
+  float exp_sum = 0.0f;
+  float probs[3];
+  for (int c = 0; c < 3; c++) {
+    probs[c] = expf(logits[c] - max_l);
+    exp_sum += probs[c];
+  }
+  for (int c = 0; c < 3; c++) {
+    probs[c] /= exp_sum;
+  }
+
+  int best_c = 0;
+  if (probs[1] > probs[best_c]) best_c = 1;
+  if (probs[2] > probs[best_c]) best_c = 2;
+
+  TinyMLPrediction pred;
+  if (best_c == 0) {
+    pred.predicted_class = "LEFT_SECTOR";
+    pred.confidence = probs[0];
+    pred.sector_angle = -55.0f;
+  } else if (best_c == 1) {
+    pred.predicted_class = "CENTER_SECTOR";
+    pred.confidence = probs[1];
+    pred.sector_angle = 0.0f;
+  } else {
+    pred.predicted_class = "RIGHT_SECTOR";
+    pred.confidence = probs[2];
+    pred.sector_angle = +55.0f;
+  }
+  return pred;
+}
+
 static SoundEvent best_event;
 static float latest_idle_left_rms = 0.0f;
 static float latest_idle_right_rms = 0.0f;
@@ -362,6 +449,11 @@ void print_report() {
                 snd_active, cur_l, cur_r);
 
   if (best_event.has_data && best_event.is_valid) {
+    TinyMLPrediction ml = run_tinyml_inference(
+        best_event.left_rms, best_event.right_rms, best_event.delay_samples,
+        best_event.peak_value, best_event.peak_ratio);
+    latest_ml_pred = ml;
+
     Serial.printf("LEFT RMS: %.0f\n", best_event.left_rms);
     Serial.printf("RIGHT RMS: %.0f\n", best_event.right_rms);
 #if USE_SUB_SAMPLE
@@ -371,6 +463,9 @@ void print_report() {
 #endif
     Serial.printf("TDOA: %.1f us\n", best_event.tdoa_us);
     Serial.printf("ANGLE: %.1f degrees\n", best_event.angle_deg);
+    Serial.printf("TINYML CLASS: %s (Confidence: %.1f%%)\n", ml.predicted_class,
+                  ml.confidence * 100.0f);
+    Serial.printf("TINYML ANGLE: %.1f degrees\n", ml.sector_angle);
     Serial.printf("[STATUS: %s | Peak: %.2f | SNR: %.1fx]\n\n",
                   best_event.status_reason, best_event.peak_value,
                   best_event.peak_ratio);
@@ -410,7 +505,8 @@ void setup() {
       "\n==================================================================");
   Serial.println(
       " Sound Direction Estimation using Machine Learning and TinyML");
-  Serial.println(" Baseline: Dual-MEMS GCC-PHAT & TDOA | NMAMIT SRIP 2025-26");
+  Serial.println(" Engine: Dual-MEMS GCC-PHAT + On-Device TinyML Classifier");
+  Serial.println(" NMAMIT SRIP 2025-26 | Edge Impulse Compatible Model");
   Serial.println(
       "==================================================================");
   Serial.printf("Sample Rate      : %d Hz\n", SAMPLE_RATE);

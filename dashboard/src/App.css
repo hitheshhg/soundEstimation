@@ -622,3 +622,69 @@ body {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+.tinyml-card {
+  background: var(--panel-inner);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.tinyml-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tinyml-tag {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.05em;
+  background: #1e2029;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tinyml-engine {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.tinyml-body {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 8px;
+}
+
+.tinyml-label {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.tinyml-class {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f4f4f5;
+}
+
+.tinyml-conf {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #a1a1aa;
+}
+
+.tinyml-match {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #71717a;
+}
