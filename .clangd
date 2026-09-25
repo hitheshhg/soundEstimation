@@ -1,0 +1,9 @@
+CompileFlags:
+  Add:
+    - "-xc++"
+    - "-w"
+    - "-ferror-limit=0"
+
+Diagnostics:
+  Suppress:
+    - "*"
